@@ -168,8 +168,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      sanitize_text_input: {
+        Args: { input_text: string }
+        Returns: string
+      }
       set_user_enabled: {
         Args: { target_user_id: string; is_enabled: boolean }
+        Returns: boolean
+      }
+      validate_email_format: {
+        Args: { email_input: string }
         Returns: boolean
       }
     }

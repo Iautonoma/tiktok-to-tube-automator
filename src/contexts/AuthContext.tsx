@@ -112,29 +112,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName
-        }
+    try {
+      // Input validation and sanitization
+      if (!email || !password) {
+        return { error: { message: 'Email e senha são obrigatórios' } };
       }
-    });
-    
-    return { error };
+      
+      if (password.length < 6) {
+        return { error: { message: 'A senha deve ter pelo menos 6 caracteres' } };
+      }
+      
+      // Basic email format validation
+      const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+      if (!emailRegex.test(email)) {
+        return { error: { message: 'Formato de email inválido' } };
+      }
+      
+      // Sanitize full name if provided
+      const sanitizedFullName = fullName ? fullName.trim().slice(0, 100) : undefined;
+      
+      const redirectUrl = `${window.location.origin}/`;
+      
+      const { error } = await supabase.auth.signUp({
+        email: email.toLowerCase().trim(),
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: sanitizedFullName
+          }
+        }
+      });
+
+      // Generic error handling to prevent user enumeration
+      if (error) {
+        if (error.message.includes('already registered')) {
+          return { error: { message: 'Este email já está em uso' } };
+        }
+        return { error: { message: 'Erro no cadastro. Tente novamente.' } };
+      }
+
+      return { error: null };
+    } catch (error: any) {
+      return { error: { message: 'Erro no cadastro. Tente novamente.' } };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    
-    return { error };
+    try {
+      // Input validation
+      if (!email || !password) {
+        return { error: { message: 'Email e senha são obrigatórios' } };
+      }
+      
+      // Basic email format validation
+      const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+      if (!emailRegex.test(email)) {
+        return { error: { message: 'Credenciais inválidas' } };
+      }
+      
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password
+      });
+      
+      // Generic error handling to prevent user enumeration
+      if (error) {
+        return { error: { message: 'Credenciais inválidas' } };
+      }
+      
+      return { error: null };
+    } catch (error: any) {
+      return { error: { message: 'Erro no login. Tente novamente.' } };
+    }
   };
 
   const signOut = async () => {
