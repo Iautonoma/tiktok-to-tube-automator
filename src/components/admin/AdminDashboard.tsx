@@ -348,9 +348,12 @@ export function AdminDashboard() {
                               onCheckedChange={(enabled) => toggleUserEnabled(user.user_id, enabled)}
                               disabled={user.email === 'bandanascombr@gmail.com'}
                             />
-                            <span className="text-sm">
+                            <Badge 
+                              variant={user.enabled ? "default" : "destructive"}
+                              className={user.enabled ? 'bg-success/20 text-success border-success/20' : 'bg-destructive/20 text-destructive border-destructive/20'}
+                            >
                               {user.enabled ? 'Ativo' : 'Inativo'}
-                            </span>
+                            </Badge>
                           </div>
                         </TableCell>
                         <TableCell>
