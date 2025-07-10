@@ -102,4 +102,9 @@ export const getMockConfig = () => ({
 // Initialize security check
 if (typeof window !== 'undefined') {
   checkSecurityConfiguration();
+  
+  // Enhanced runtime validation
+  import('@/lib/security/environment').then(({ environmentSecurity }) => {
+    environmentSecurity.validateRuntimeEnvironment();
+  });
 }

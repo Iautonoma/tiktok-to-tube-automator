@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRateLimit } from '@/hooks/useRateLimit';
+import { SecurityValidator } from '@/lib/security/validation';
+import { logAuthAttempt, logValidationError } from '@/lib/security/audit';
 import { Loader2, Github, Youtube, VideoIcon, AlertTriangle } from 'lucide-react';
 
 export default function Auth() {
@@ -52,6 +54,22 @@ export default function Auth() {
       return;
     }
     
+    // Enhanced input validation
+    const emailValidation = SecurityValidator.validateEmail(loginForm.email);
+    const passwordValidation = SecurityValidator.validateText(loginForm.password, 128);
+    
+    if (!emailValidation.isValid) {
+      logValidationError('login_email', loginForm.email, emailValidation.errors);
+      setError(emailValidation.errors[0]);
+      return;
+    }
+    
+    if (!passwordValidation.isValid) {
+      logValidationError('login_password', 'password_field', passwordValidation.errors);
+      setError('Senha inválida');
+      return;
+    }
+    
     if (!loginForm.email || !loginForm.password) {
       setError('Por favor, preencha todos os campos');
       return;
@@ -67,13 +85,15 @@ export default function Auth() {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       
-      const { error } = await signIn(loginForm.email, loginForm.password);
+      const { error } = await signIn(emailValidation.sanitizedValue, loginForm.password);
       
       if (error) {
         recordAttempt(false);
+        logAuthAttempt(undefined, false, { error: error.message, email: emailValidation.sanitizedValue });
         setError(error.message || 'Credenciais inválidas');
       } else {
         recordAttempt(true);
+        logAuthAttempt(undefined, true, { email: emailValidation.sanitizedValue });
         toast({
           title: "Login realizado!",
           description: "Bem-vindo ao sistema de automação",
@@ -93,52 +113,51 @@ export default function Auth() {
     setIsSubmitting(true);
     setError(null);
 
+    // Enhanced security validation
+    const validationResults = SecurityValidator.validateForm({
+      email: signupForm.email,
+      password: signupForm.password,
+      fullName: signupForm.fullName
+    });
+
+    if (!validationResults.isValid) {
+      const firstError = Object.values(validationResults.errors)[0][0];
+      logValidationError('signup_form', signupForm, Object.values(validationResults.errors).flat());
+      setError(firstError);
+      setIsSubmitting(false);
+      return;
+    }
+
     // Basic input validation
     if (!signupForm.email || !signupForm.password || !signupForm.confirmPassword || !signupForm.fullName) {
       setError('Por favor, preencha todos os campos');
       setIsSubmitting(false);
       return;
     }
-    
-    // Sanitize full name input
-    const sanitizedFullName = signupForm.fullName.trim().replace(/[<>'"&]/g, '');
-    if (sanitizedFullName.length < 2) {
-      setError('Nome deve ter pelo menos 2 caracteres');
-      setIsSubmitting(false);
-      return;
-    }
 
-    // Validation
+    // Password confirmation validation
     if (signupForm.password !== signupForm.confirmPassword) {
       setError('As senhas não coincidem');
       setIsSubmitting(false);
       return;
     }
 
-    if (signupForm.password.length < 8) {
-      setError('A senha deve ter pelo menos 8 caracteres');
-      setIsSubmitting(false);
-      return;
-    }
-    
-    // Password strength validation
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
-    if (!passwordRegex.test(signupForm.password)) {
-      setError('A senha deve conter pelo menos uma letra minúscula, uma maiúscula e um número');
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
+      // Use validated and sanitized values
+      const emailValidation = SecurityValidator.validateEmail(signupForm.email);
+      const nameValidation = SecurityValidator.validateName(signupForm.fullName);
+      
       const { error } = await signUp(
-        signupForm.email, 
+        emailValidation.sanitizedValue!, 
         signupForm.password, 
-        sanitizedFullName
+        nameValidation.sanitizedValue!
       );
       
       if (error) {
+        logAuthAttempt(undefined, false, { error: error.message, email: emailValidation.sanitizedValue });
         setError(error.message || 'Erro ao criar conta');
       } else {
+        logAuthAttempt(undefined, true, { email: emailValidation.sanitizedValue, action: 'signup' });
         toast({
           title: "Conta criada!",
           description: "Verifique seu email para confirmar a conta",

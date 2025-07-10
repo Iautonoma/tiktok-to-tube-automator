@@ -6,10 +6,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { SecurityDashboard } from '@/components/security/SecurityDashboard';
 import { Users, Activity, Database, Settings, Trash2, Shield, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { logAdminAction } from '@/lib/security/audit';
 
 interface UserProfile {
   id: string;
@@ -122,6 +124,14 @@ export function AdminDashboard() {
 
       if (error) throw error;
 
+      // Log security event
+      logAdminAction(
+        userId, 
+        'update_user_role', 
+        userId,
+        { oldRole: users.find(u => u.user_id === userId)?.role, newRole }
+      );
+
       toast({
         title: "Sucesso",
         description: `Papel do usuário atualizado para ${newRole}`,
@@ -148,6 +158,14 @@ export function AdminDashboard() {
 
       if (error) throw error;
 
+      // Log security event
+      logAdminAction(
+        userId, 
+        enabled ? 'enable_user' : 'disable_user', 
+        userId,
+        { enabled, userEmail: users.find(u => u.user_id === userId)?.email }
+      );
+
       toast({
         title: "Sucesso",
         description: `Usuário ${enabled ? 'habilitado' : 'desabilitado'} com sucesso`,
@@ -167,10 +185,20 @@ export function AdminDashboard() {
 
   const deleteUser = async (userId: string) => {
     try {
+      const userToDelete = users.find(u => u.user_id === userId);
+      
       // This will cascade delete profile, roles, accounts, and sessions
       const { error } = await supabase.auth.admin.deleteUser(userId);
 
       if (error) throw error;
+
+      // Log critical security event
+      logAdminAction(
+        userId, 
+        'delete_user', 
+        userId,
+        { userEmail: userToDelete?.email, deletedAt: new Date().toISOString() }
+      );
 
       toast({
         title: "Sucesso",
@@ -306,8 +334,9 @@ export function AdminDashboard() {
 
         {/* Management Interface */}
         <Tabs defaultValue="users" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 bg-card/50">
+          <TabsList className="grid w-full grid-cols-3 bg-card/50">
             <TabsTrigger value="users">Gestão de Usuários</TabsTrigger>
+            <TabsTrigger value="security">Segurança</TabsTrigger>
             <TabsTrigger value="system">Sistema</TabsTrigger>
           </TabsList>
 
@@ -404,6 +433,10 @@ export function AdminDashboard() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="security" className="space-y-6">
+            <SecurityDashboard />
           </TabsContent>
 
           <TabsContent value="system" className="space-y-6">
