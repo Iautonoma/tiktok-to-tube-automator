@@ -94,6 +94,7 @@ export type Database = {
           avatar_url: string | null
           created_at: string | null
           email: string
+          enabled: boolean | null
           full_name: string | null
           id: string
           updated_at: string | null
@@ -103,6 +104,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           email: string
+          enabled?: boolean | null
           full_name?: string | null
           id?: string
           updated_at?: string | null
@@ -112,6 +114,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           email?: string
+          enabled?: boolean | null
           full_name?: string | null
           id?: string
           updated_at?: string | null
@@ -142,7 +145,20 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      admin_user_overview: {
+        Row: {
+          accounts_count: number | null
+          created_at: string | null
+          email: string | null
+          enabled: boolean | null
+          full_name: string | null
+          id: string | null
+          role: Database["public"]["Enums"]["app_role"] | null
+          sessions_count: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {
@@ -150,6 +166,10 @@ export type Database = {
           _user_id: string
           _role: Database["public"]["Enums"]["app_role"]
         }
+        Returns: boolean
+      }
+      set_user_enabled: {
+        Args: { target_user_id: string; is_enabled: boolean }
         Returns: boolean
       }
     }

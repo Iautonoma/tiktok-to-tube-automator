@@ -19,6 +19,25 @@ const Index = () => {
     return <Navigate to="/auth" replace />;
   }
 
+  // Check if user is disabled
+  if (user && profile && !profile.enabled) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="max-w-md mx-auto text-center p-6">
+          <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 mb-4">
+            <h2 className="text-xl font-semibold text-destructive mb-2">Conta Desativada</h2>
+            <p className="text-sm text-muted-foreground">
+              Sua conta foi desativada. Entre em contato com o administrador para mais informações.
+            </p>
+          </div>
+          <Button onClick={signOut} variant="outline">
+            Fazer Logout
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">

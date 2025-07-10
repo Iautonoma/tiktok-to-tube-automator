@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Users, Activity, Database, Settings, Trash2, Shield, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +16,7 @@ interface UserProfile {
   user_id: string;
   email: string;
   full_name: string | null;
+  enabled: boolean;
   created_at: string;
   role?: 'admin' | 'user';
   accounts_count?: number;
@@ -48,42 +50,55 @@ export function AdminDashboard() {
 
   const fetchAdminData = async () => {
     try {
-      // Fetch users with their roles
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select(`
-          *,
-          user_roles(role),
-          connected_accounts(count),
-          automation_sessions(count)
-        `);
+      // Use the simplified view for better performance
+      const { data: usersData, error: usersError } = await supabase
+        .from('admin_user_overview')
+        .select('*');
 
-      if (profilesError) throw profilesError;
+      if (usersError) {
+        console.error('Error fetching users from view:', usersError);
+        // Fallback to direct queries
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*');
 
-      // Process user data with counts
-      const usersWithStats = profilesData?.map(profile => ({
-        ...profile,
-        role: (profile.user_roles as any)?.[0]?.role || 'user',
-        accounts_count: (profile.connected_accounts as any)?.length || 0,
-        sessions_count: (profile.automation_sessions as any)?.length || 0
-      })) || [];
+        if (profilesError) throw profilesError;
 
-      setUsers(usersWithStats);
+        // Get roles separately
+        const { data: rolesData } = await supabase
+          .from('user_roles')
+          .select('user_id, role');
 
-      // Calculate stats
-      const { data: accountsCount } = await supabase
+        // Combine data manually
+        const usersWithRoles = profilesData?.map(profile => ({
+          ...profile,
+          role: rolesData?.find(r => r.user_id === profile.user_id)?.role || 'user',
+          accounts_count: 0,
+          sessions_count: 0
+        })) || [];
+
+        setUsers(usersWithRoles);
+      } else {
+        setUsers(usersData || []);
+      }
+
+      // Calculate stats with simple counts
+      const { count: accountsCount } = await supabase
         .from('connected_accounts')
-        .select('id', { count: 'exact' });
+        .select('*', { count: 'exact', head: true });
 
-      const { data: sessionsCount } = await supabase
+      const { count: sessionsCount } = await supabase
         .from('automation_sessions')
-        .select('id', { count: 'exact' });
+        .select('*', { count: 'exact', head: true });
+
+      const totalUsers = usersData?.length || 0;
+      const activeUsers = usersData?.filter(u => u.accounts_count > 0).length || 0;
 
       setStats({
-        totalUsers: usersWithStats.length,
-        totalSessions: sessionsCount?.length || 0,
-        totalAccounts: accountsCount?.length || 0,
-        activeUsers: usersWithStats.filter(u => u.accounts_count > 0).length
+        totalUsers,
+        totalSessions: sessionsCount || 0,
+        totalAccounts: accountsCount || 0,
+        activeUsers
       });
 
     } catch (error) {
@@ -119,6 +134,32 @@ export function AdminDashboard() {
       toast({
         title: "Erro",
         description: "Erro ao atualizar papel do usuário",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const toggleUserEnabled = async (userId: string, enabled: boolean) => {
+    try {
+      const { data, error } = await supabase.rpc('set_user_enabled', {
+        target_user_id: userId,
+        is_enabled: enabled
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso",
+        description: `Usuário ${enabled ? 'habilitado' : 'desabilitado'} com sucesso`,
+      });
+
+      fetchAdminData();
+
+    } catch (error) {
+      console.error('Error toggling user enabled:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao alterar status do usuário",
         variant: "destructive"
       });
     }
@@ -283,6 +324,7 @@ export function AdminDashboard() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Usuário</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Papel</TableHead>
                       <TableHead>Contas</TableHead>
                       <TableHead>Sessões</TableHead>
@@ -300,6 +342,18 @@ export function AdminDashboard() {
                           </div>
                         </TableCell>
                         <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={user.enabled}
+                              onCheckedChange={(enabled) => toggleUserEnabled(user.user_id, enabled)}
+                              disabled={user.email === 'bandanascombr@gmail.com'}
+                            />
+                            <span className="text-sm">
+                              {user.enabled ? 'Ativo' : 'Inativo'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
                           <Badge 
                             variant={user.role === 'admin' ? 'default' : 'secondary'}
                             className={user.role === 'admin' ? 'bg-primary/20 text-primary' : ''}
@@ -307,8 +361,8 @@ export function AdminDashboard() {
                             {user.role === 'admin' ? 'Admin' : 'Usuário'}
                           </Badge>
                         </TableCell>
-                        <TableCell>{user.accounts_count}</TableCell>
-                        <TableCell>{user.sessions_count}</TableCell>
+                        <TableCell>{user.accounts_count || 0}</TableCell>
+                        <TableCell>{user.sessions_count || 0}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatDate(user.created_at)}
                         </TableCell>
