@@ -103,15 +103,56 @@ class TikTokService {
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      // Simulate download via ssstik.io
+      // Add 60-second delay between downloads as requested
+      console.log(`[AutomationSystem] Waiting 60 seconds before download: ${video.id}`);
+      await this.delay(60000);
+
+      // Real ssstik.io integration
       const ssstikUrl = 'https://ssstik.io/abc';
       
-      // Add realistic delay for download
-      await this.delay(3000 + Math.random() * 5000);
-
-      // Mock download URL (in real implementation, this would be from ssstik.io)
-      const downloadUrl = `https://ssstik.io/download/${video.id}.mp4`;
+      // Extract TikTok URL for ssstik.io
+      const tiktokUrl = video.url;
       
+      // Call ssstik.io API to get download URL
+      const formData = new FormData();
+      formData.append('id', tiktokUrl);
+      formData.append('locale', 'pt');
+      formData.append('tt', 'UGhUcVFx');
+
+      const ssstikResponse = await fetch(ssstikUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://ssstik.io/',
+        }
+      });
+
+      if (!ssstikResponse.ok) {
+        throw new Error(`ssstik.io request failed: ${ssstikResponse.statusText}`);
+      }
+
+      const responseText = await ssstikResponse.text();
+      
+      // Parse the response to extract download URL
+      const downloadUrlMatch = responseText.match(/href="([^"]*\.mp4[^"]*)"/);
+      
+      if (!downloadUrlMatch) {
+        throw new Error('Could not extract download URL from ssstik.io response');
+      }
+
+      const downloadUrl = downloadUrlMatch[1];
+      
+      // Validate the download URL
+      const videoResponse = await fetch(downloadUrl, { 
+        method: 'HEAD',
+        signal: AbortSignal.timeout(30000) // 30 second timeout
+      });
+      
+      if (!videoResponse.ok) {
+        throw new Error(`Video file not accessible: ${videoResponse.statusText}`);
+      }
+
       console.log(`[AutomationSystem] Video downloaded successfully: ${video.id}`);
       
       return {
@@ -126,7 +167,7 @@ class TikTokService {
       return {
         success: false,
         error: errorMessage,
-        retryAfter: 3000
+        retryAfter: 5000
       };
     }
   }

@@ -190,10 +190,8 @@ export function VideoProcessor({
           });
         }
 
-        // Add delay between videos to respect rate limits
-        if (i < videos.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        // No additional delay needed here since the 60-second delay is built into downloadVideo
+        // The TikTok service already implements the required 60-second delay
       }
 
       onProcessingComplete(processedVideos);

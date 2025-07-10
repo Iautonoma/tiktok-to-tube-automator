@@ -83,6 +83,7 @@ class GofileService {
   ): Promise<ServiceResponse<GofileUploadResponse>> {
     try {
       console.log(`[AutomationSystem] Uploading to Gofile: ${fileName}`);
+      console.log(`[AutomationSystem] Downloading file from: ${fileUrl}`);
       
       await this.checkRateLimit();
       this.rateLimitCount++;
@@ -97,15 +98,38 @@ class GofileService {
 
       const uploadServer = serverData.data.server;
 
-      // Download the file first
-      const fileResponse = await fetch(fileUrl);
+      // Download the file first with timeout and proper headers
+      console.log(`[AutomationSystem] Downloading video file for upload...`);
+      const fileResponse = await fetch(fileUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://ssstik.io/',
+        },
+        // Add timeout to prevent hanging
+        signal: AbortSignal.timeout(120000) // 2 minute timeout
+      });
+
       if (!fileResponse.ok) {
-        throw new Error(`Failed to download file: ${fileResponse.statusText}`);
+        throw new Error(`Failed to download file: ${fileResponse.status} ${fileResponse.statusText}`);
+      }
+
+      // Verify content type
+      const contentType = fileResponse.headers.get('content-type');
+      if (!contentType?.includes('video/') && !contentType?.includes('application/octet-stream')) {
+        console.warn(`[AutomationSystem] Unexpected content type: ${contentType}`);
       }
 
       const fileBlob = await fileResponse.blob();
+      
+      // Verify file size
+      if (fileBlob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
 
-      // Prepare upload
+      console.log(`[AutomationSystem] File downloaded successfully, size: ${(fileBlob.size / (1024 * 1024)).toFixed(2)} MB`);
+
+      // Prepare upload with retry logic
       const formData = new FormData();
       formData.append('token', this.accountToken);
       formData.append('file', fileBlob, fileName);
@@ -113,31 +137,52 @@ class GofileService {
         formData.append('folderId', folderId);
       }
 
-      // Upload to Gofile
-      const uploadResponse = await fetch(`https://${uploadServer}.gofile.io/uploadFile`, {
-        method: 'POST',
-        body: formData,
-      });
+      console.log(`[AutomationSystem] Uploading to Gofile server: ${uploadServer}`);
 
-      const uploadResult = await uploadResponse.json();
+      // Upload to Gofile with retry logic
+      let uploadAttempt = 0;
+      const maxAttempts = 3;
+      
+      while (uploadAttempt < maxAttempts) {
+        try {
+          const uploadResponse = await fetch(`https://${uploadServer}.gofile.io/uploadFile`, {
+            method: 'POST',
+            body: formData,
+            signal: AbortSignal.timeout(300000) // 5 minute timeout for upload
+          });
 
-      if (uploadResult.status === 'ok') {
-        const fileData = uploadResult.data;
-        const response: GofileUploadResponse = {
-          downloadPage: fileData.downloadPage,
-          directLink: fileData.directLink || fileData.downloadPage,
-          fileId: fileData.fileId
-        };
+          const uploadResult = await uploadResponse.json();
 
-        console.log(`[AutomationSystem] File uploaded to Gofile successfully: ${fileData.fileId}`);
-        
-        return {
-          success: true,
-          data: response
-        };
-      } else {
-        throw new Error(uploadResult.status || 'Upload failed');
+          if (uploadResult.status === 'ok') {
+            const fileData = uploadResult.data;
+            const response: GofileUploadResponse = {
+              downloadPage: fileData.downloadPage,
+              directLink: fileData.directLink || fileData.downloadPage,
+              fileId: fileData.fileId
+            };
+
+            console.log(`[AutomationSystem] File uploaded to Gofile successfully: ${fileData.fileId}`);
+            console.log(`[AutomationSystem] Download page: ${fileData.downloadPage}`);
+            
+            return {
+              success: true,
+              data: response
+            };
+          } else {
+            throw new Error(uploadResult.status || 'Upload failed');
+          }
+        } catch (attemptError) {
+          uploadAttempt++;
+          if (uploadAttempt >= maxAttempts) {
+            throw attemptError;
+          }
+          
+          console.warn(`[AutomationSystem] Upload attempt ${uploadAttempt} failed, retrying...`);
+          await this.delay(2000 * uploadAttempt); // Exponential backoff
+        }
       }
+
+      throw new Error('All upload attempts failed');
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
@@ -146,7 +191,7 @@ class GofileService {
       return {
         success: false,
         error: errorMessage,
-        retryAfter: 5000
+        retryAfter: 10000
       };
     }
   }
