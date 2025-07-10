@@ -72,7 +72,7 @@ export function AdminDashboard() {
         // Combine data manually
         const usersWithRoles = profilesData?.map(profile => ({
           ...profile,
-          role: rolesData?.find(r => r.user_id === profile.user_id)?.role || 'user',
+          role: (rolesData?.find(r => r.user_id === profile.user_id)?.role || 'user') as 'admin' | 'user',
           accounts_count: 0,
           sessions_count: 0
         })) || [];
@@ -372,17 +372,17 @@ export function AdminDashboard() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Select
-                              value={user.role}
+                              value={user.role || 'user'}
                               onValueChange={(value: 'admin' | 'user') => 
                                 updateUserRole(user.user_id, value)
                               }
                             >
                               <SelectTrigger className="w-28 bg-background border-border">
-                                <SelectValue />
+                                <SelectValue placeholder="Selecionar papel" />
                               </SelectTrigger>
                               <SelectContent className="bg-background border-border shadow-lg z-50">
-                                <SelectItem value="user" className="hover:bg-muted">Usuário</SelectItem>
-                                <SelectItem value="admin" className="hover:bg-muted">Admin</SelectItem>
+                                <SelectItem value="user" className="hover:bg-muted focus:bg-muted">Usuário</SelectItem>
+                                <SelectItem value="admin" className="hover:bg-muted focus:bg-muted">Admin</SelectItem>
                               </SelectContent>
                             </Select>
                             
