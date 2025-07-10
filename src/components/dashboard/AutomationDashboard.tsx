@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { TikTokCollector } from '@/components/automation/TikTokCollector';
 import { VideoProcessor } from '@/components/automation/VideoProcessor';
 import { YouTubeUploader } from '@/components/automation/YouTubeUploader';
+import { GitHubIntegration } from '@/components/github/GitHubIntegration';
 import { 
   TikTokVideo, 
   AutomationConfig, 
@@ -376,48 +377,58 @@ export function AutomationDashboard() {
           </Card>
         )}
 
-        {/* Main Automation Interface */}
-        <Tabs defaultValue="collect" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-card/50">
-            <TabsTrigger value="collect" className="data-[state=active]:bg-primary/20">
-              1. Coletar
-            </TabsTrigger>
-            <TabsTrigger value="process" className="data-[state=active]:bg-primary/20">
-              2. Processar
-            </TabsTrigger>
-            <TabsTrigger value="upload" className="data-[state=active]:bg-primary/20">
-              3. Upload
-            </TabsTrigger>
-          </TabsList>
+        {/* GitHub Integration Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            {/* Main Automation Interface */}
+            <Tabs defaultValue="collect" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-3 bg-card/50">
+                <TabsTrigger value="collect" className="data-[state=active]:bg-primary/20">
+                  1. Coletar
+                </TabsTrigger>
+                <TabsTrigger value="process" className="data-[state=active]:bg-primary/20">
+                  2. Processar
+                </TabsTrigger>
+                <TabsTrigger value="upload" className="data-[state=active]:bg-primary/20">
+                  3. Upload
+                </TabsTrigger>
+              </TabsList>
 
-          <TabsContent value="collect" className="space-y-6">
-            <TikTokCollector
-              onVideosCollected={handleVideosCollected}
-              config={config}
-              onConfigUpdate={handleConfigUpdate}
-              isProcessing={isProcessing}
-            />
-          </TabsContent>
+              <TabsContent value="collect" className="space-y-6">
+                <TikTokCollector
+                  onVideosCollected={handleVideosCollected}
+                  config={config}
+                  onConfigUpdate={handleConfigUpdate}
+                  isProcessing={isProcessing}
+                />
+              </TabsContent>
 
-          <TabsContent value="process" className="space-y-6">
-            <VideoProcessor
-              videos={collectedVideos}
-              onProcessingComplete={handleProcessingComplete}
-              isProcessing={isProcessing}
-              onProcessingChange={setIsProcessing}
-            />
-          </TabsContent>
+              <TabsContent value="process" className="space-y-6">
+                <VideoProcessor
+                  videos={collectedVideos}
+                  onProcessingComplete={handleProcessingComplete}
+                  isProcessing={isProcessing}
+                  onProcessingChange={setIsProcessing}
+                />
+              </TabsContent>
 
-          <TabsContent value="upload" className="space-y-6">
-            <YouTubeUploader
-              videos={processedVideos}
-              config={config}
-              onConfigUpdate={handleConfigUpdate}
-              isProcessing={isProcessing}
-              onUploadComplete={handleUploadComplete}
-            />
-          </TabsContent>
-        </Tabs>
+              <TabsContent value="upload" className="space-y-6">
+                <YouTubeUploader
+                  videos={processedVideos}
+                  config={config}
+                  onConfigUpdate={handleConfigUpdate}
+                  isProcessing={isProcessing}
+                  onUploadComplete={handleUploadComplete}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          {/* GitHub Integration Sidebar */}
+          <div className="space-y-6">
+            <GitHubIntegration />
+          </div>
+        </div>
 
         {/* Footer */}
         <div className="text-center text-xs text-muted-foreground pt-6 border-t border-border/30">
