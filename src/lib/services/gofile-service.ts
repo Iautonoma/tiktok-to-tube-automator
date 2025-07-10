@@ -1,15 +1,17 @@
 import { ServiceResponse, GofileUploadResponse } from '@/lib/types/automation';
 
 class GofileService {
-  private accountId: string | null = null;
-  private accountToken: string | null = null;
+  private accountId: string;
+  private accountToken: string;
   private rateLimitCount = 0;
   private rateLimitReset = 0;
+  private baseUrl = 'https://api.gofile.io';
 
   constructor() {
-    // Note: In production, these would come from secure environment variables
-    // For development, we'll simulate the service
-    console.log('[AutomationSystem] Gofile Service initialized');
+    // Use the provided account credentials
+    this.accountId = 'fe95c12e-e376-46f7-aa4c-83a8e0b2992c';
+    this.accountToken = 'fe95c12e-e376-46f7-aa4c-83a8e0b2992c';
+    console.log('[AutomationSystem] Gofile Service initialized with real API');
   }
 
   private async delay(ms: number): Promise<void> {
@@ -31,24 +33,36 @@ class GofileService {
     }
   }
 
-  async createFolder(folderName: string): Promise<ServiceResponse<string>> {
+  async createFolder(folderName: string, parentFolderId?: string): Promise<ServiceResponse<string>> {
     try {
       console.log(`[AutomationSystem] Creating Gofile folder: ${folderName}`);
       
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      // Simulate API call
-      await this.delay(500 + Math.random() * 1000);
+      const formData = new FormData();
+      formData.append('token', this.accountToken);
+      formData.append('folderName', folderName);
+      if (parentFolderId) {
+        formData.append('parentFolderId', parentFolderId);
+      }
 
-      const folderId = `folder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      console.log(`[AutomationSystem] Gofile folder created: ${folderId}`);
-      
-      return {
-        success: true,
-        data: folderId
-      };
+      const response = await fetch(`${this.baseUrl}/createFolder`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.status === 'ok') {
+        console.log(`[AutomationSystem] Gofile folder created: ${result.data.id}`);
+        return {
+          success: true,
+          data: result.data.id
+        };
+      } else {
+        throw new Error(result.status || 'Failed to create folder');
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create folder';
@@ -73,25 +87,57 @@ class GofileService {
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      // Simulate file upload with realistic timing
-      await this.delay(5000 + Math.random() * 10000);
-
-      const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const downloadPage = `https://gofile.io/d/${fileId}`;
-      const directLink = `https://store1.gofile.io/download/${fileId}/${fileName}`;
-
-      const response: GofileUploadResponse = {
-        downloadPage,
-        directLink,
-        fileId
-      };
-
-      console.log(`[AutomationSystem] File uploaded to Gofile successfully: ${fileId}`);
+      // First, get the upload server
+      const serverResponse = await fetch(`${this.baseUrl}/getServer`);
+      const serverData = await serverResponse.json();
       
-      return {
-        success: true,
-        data: response
-      };
+      if (serverData.status !== 'ok') {
+        throw new Error('Failed to get upload server');
+      }
+
+      const uploadServer = serverData.data.server;
+
+      // Download the file first
+      const fileResponse = await fetch(fileUrl);
+      if (!fileResponse.ok) {
+        throw new Error(`Failed to download file: ${fileResponse.statusText}`);
+      }
+
+      const fileBlob = await fileResponse.blob();
+
+      // Prepare upload
+      const formData = new FormData();
+      formData.append('token', this.accountToken);
+      formData.append('file', fileBlob, fileName);
+      if (folderId) {
+        formData.append('folderId', folderId);
+      }
+
+      // Upload to Gofile
+      const uploadResponse = await fetch(`https://${uploadServer}.gofile.io/uploadFile`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const uploadResult = await uploadResponse.json();
+
+      if (uploadResult.status === 'ok') {
+        const fileData = uploadResult.data;
+        const response: GofileUploadResponse = {
+          downloadPage: fileData.downloadPage,
+          directLink: fileData.directLink || fileData.downloadPage,
+          fileId: fileData.fileId
+        };
+
+        console.log(`[AutomationSystem] File uploaded to Gofile successfully: ${fileData.fileId}`);
+        
+        return {
+          success: true,
+          data: response
+        };
+      } else {
+        throw new Error(uploadResult.status || 'Upload failed');
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
@@ -112,15 +158,26 @@ class GofileService {
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      // Simulate deletion
-      await this.delay(500 + Math.random() * 1000);
+      const formData = new FormData();
+      formData.append('token', this.accountToken);
+      formData.append('contentId', fileId);
 
-      console.log(`[AutomationSystem] Gofile file deleted: ${fileId}`);
-      
-      return {
-        success: true,
-        data: true
-      };
+      const response = await fetch(`${this.baseUrl}/deleteContent`, {
+        method: 'DELETE',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.status === 'ok') {
+        console.log(`[AutomationSystem] Gofile file deleted: ${fileId}`);
+        return {
+          success: true,
+          data: true
+        };
+      } else {
+        throw new Error(result.status || 'Deletion failed');
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Deletion failed';
@@ -141,18 +198,22 @@ class GofileService {
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      await this.delay(300 + Math.random() * 500);
+      const response = await fetch(`${this.baseUrl}/getAccountDetails?token=${this.accountToken}`);
+      const result = await response.json();
 
-      // Mock account info
-      const accountInfo = {
-        storage: Math.floor(Math.random() * 50) * 1024 * 1024 * 1024, // Random GB used
-        quota: 100 * 1024 * 1024 * 1024 // 100GB quota
-      };
+      if (result.status === 'ok') {
+        const accountInfo = {
+          storage: result.data.totalSize || 0,
+          quota: result.data.totalSizeLimit || 0
+        };
 
-      return {
-        success: true,
-        data: accountInfo
-      };
+        return {
+          success: true,
+          data: accountInfo
+        };
+      } else {
+        throw new Error(result.status || 'Failed to get account info');
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to get account info';
