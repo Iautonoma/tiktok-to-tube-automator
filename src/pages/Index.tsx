@@ -105,18 +105,20 @@ const Index = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-4 sm:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${isAdmin() ? 'grid-cols-4' : 'grid-cols-3'} bg-card/50`}>
+          <TabsList className={`grid w-full ${isAdmin() ? 'grid-cols-4' : 'grid-cols-2'} bg-card/50`}>
             <TabsTrigger value="dashboard" className="data-[state=active]:bg-primary/20">
               Dashboard
             </TabsTrigger>
             <TabsTrigger value="accounts" className="data-[state=active]:bg-primary/20">
               Contas
             </TabsTrigger>
-            <TabsTrigger value="testing" className="data-[state=active]:bg-primary/20 flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">Como testar o sistema</span>
-              <span className="sm:hidden">Testes</span>
-            </TabsTrigger>
+            {isAdmin() && (
+              <TabsTrigger value="testing" className="data-[state=active]:bg-primary/20 flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Como testar o sistema</span>
+                <span className="sm:hidden">Testes</span>
+              </TabsTrigger>
+            )}
             {isAdmin() && (
               <TabsTrigger value="admin" className="data-[state=active]:bg-primary/20">
                 Admin
@@ -132,9 +134,11 @@ const Index = () => {
             <AccountsManager />
           </TabsContent>
 
-          <TabsContent value="testing" className="space-y-6">
-            <TestingDocumentation />
-          </TabsContent>
+          {isAdmin() && (
+            <TabsContent value="testing" className="space-y-6">
+              <TestingDocumentation />
+            </TabsContent>
+          )}
 
           {isAdmin() && (
             <TabsContent value="admin" className="space-y-6">
