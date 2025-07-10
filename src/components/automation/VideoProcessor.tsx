@@ -200,6 +200,9 @@ export function VideoProcessor({
         return await processVideo(video, videoIndex, maxRetries);
       }
 
+      // Max retries reached - mark as error and continue to next video
+      addLog('error', `Falha após ${maxRetries} tentativas`, `Pulando para próximo vídeo`, videoId);
+
       updateVideoState(videoId, {
         status: 'error',
         progress: 0,
@@ -208,12 +211,13 @@ export function VideoProcessor({
 
       setCurrentStep({
         id: `error_${videoId}`,
-        name: `Erro no vídeo ${videoIndex + 1}/${videos.length}`,
+        name: `Erro no vídeo ${videoIndex + 1}/${videos.length} - Continuando...`,
         status: 'error',
         error: errorMessage,
         timestamp: new Date()
       });
 
+      // Return false to indicate failure, but processing will continue
       return false;
     }
   }, [updateVideoState, retryCount, toast, addLog, videos.length]);
@@ -237,45 +241,70 @@ export function VideoProcessor({
 
     try {
       const processedVideos: TikTokVideo[] = [];
+      const failedVideos: string[] = [];
       
       for (let i = 0; i < videos.length; i++) {
         const video = videos[i];
         setCurrentVideoIndex(i);
         
-        // Add delay countdown before each download (except the first one)
-        if (i > 0) {
-          updateVideoState(video.id, { status: 'waiting', progress: 0 });
-          addLog('info', `Aguardando delay obrigatório antes do vídeo ${i + 1}`, 'Rate limiting para evitar bloqueios');
+        addLog('info', `Processando vídeo ${i + 1}/${videos.length}`, `@${video.author}`);
+        
+        try {
+          // Add delay countdown before each download (except the first one)
+          if (i > 0) {
+            updateVideoState(video.id, { status: 'waiting', progress: 0 });
+            addLog('info', `Aguardando delay obrigatório antes do vídeo ${i + 1}`, 'Rate limiting para evitar bloqueios');
+            
+            const countdownInterval = startDelayCountdown(60, video.id);
+            
+            // Wait for countdown to finish
+            await new Promise<void>(resolve => {
+              const checkCountdown = setInterval(() => {
+                if (delayCountdown <= 1) {
+                  clearInterval(checkCountdown);
+                  clearInterval(countdownInterval);
+                  resolve();
+                }
+              }, 100);
+            });
+          }
           
-          const countdownInterval = startDelayCountdown(60, video.id);
+          const success = await processVideo(video, i);
           
-          // Wait for countdown to finish
-          await new Promise<void>(resolve => {
-            const checkCountdown = setInterval(() => {
-              if (delayCountdown <= 1) {
-                clearInterval(checkCountdown);
-                clearInterval(countdownInterval);
-                resolve();
-              }
-            }, 100);
+          if (success) {
+            const state = processingState.get(video.id);
+            processedVideos.push({
+              ...video,
+              downloadUrl: state?.gofileUrl
+            });
+            addLog('success', `Vídeo ${i + 1}/${videos.length} processado com sucesso`, `Total processados: ${processedVideos.length}`);
+          } else {
+            failedVideos.push(video.id);
+            addLog('error', `Vídeo ${i + 1}/${videos.length} falhou`, `Continuando para próximo vídeo. Total falhas: ${failedVideos.length}`);
+          }
+          
+        } catch (error) {
+          // Catch any unexpected errors and continue processing
+          const errorMessage = error instanceof Error ? error.message : 'Erro inesperado';
+          failedVideos.push(video.id);
+          addLog('error', `Erro inesperado no vídeo ${i + 1}/${videos.length}`, `${errorMessage}. Continuando...`);
+          
+          updateVideoState(video.id, {
+            status: 'error',
+            progress: 0,
+            error: errorMessage
           });
         }
         
-        const success = await processVideo(video, i);
-        
-        if (success) {
-          const state = processingState.get(video.id);
-          processedVideos.push({
-            ...video,
-            downloadUrl: state?.gofileUrl
-          });
-        }
+        // Show progress update
+        const totalProgress = Math.round(((i + 1) / videos.length) * 100);
+        addLog('info', `Progresso geral: ${totalProgress}%`, `${i + 1}/${videos.length} vídeos processados`);
       }
 
       onProcessingComplete(processedVideos);
       
       const successCount = processedVideos.length;
-      const errorCount = videos.length - successCount;
+      const errorCount = failedVideos.length;
 
       addLog('success', 'Processamento em lote concluído', `${successCount} sucessos, ${errorCount} erros`);
 
@@ -299,6 +328,7 @@ export function VideoProcessor({
       setCurrentStep(null);
       setDelayCountdown(0);
       setCurrentVideoIndex(0);
+      addLog('info', 'Sessão de processamento finalizada', 'Sistema pronto para nova sessão');
     }
   }, [videos, processVideo, onProcessingChange, onProcessingComplete, processingState, toast, addLog, startDelayCountdown, delayCountdown]);
 
