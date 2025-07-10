@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { TikTokVideo, ProcessingStep } from '@/lib/types/automation';
 import { tiktokService } from '@/lib/services/tiktok-service';
@@ -25,7 +26,7 @@ export function useVideoProcessor() {
   const [currentVideoIndex, setCurrentVideoIndex] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
-  const { addLog } = useGlobalLogs();
+  const { addLog, clearLogs } = useGlobalLogs();
   const { toast } = useToast();
 
   const updateVideoState = useCallback((videoId: string, updates: Partial<VideoProcessingState>) => {
@@ -215,10 +216,13 @@ export function useVideoProcessor() {
       return;
     }
 
+    // Limpar logs da sessão anterior antes de iniciar nova sessão
+    clearLogs();
+
     setIsProcessing(true);
     initializeVideos(videos);
     
-    addLog('info', `Iniciando processamento em lote`, `${videos.length} vídeos na fila`);
+    addLog('info', `Nova sessão iniciada - Processamento em lote`, `${videos.length} vídeos na fila`);
 
     try {
       const processedVideos: TikTokVideo[] = [];
@@ -300,7 +304,7 @@ export function useVideoProcessor() {
       setCurrentVideoIndex(0);
       addLog('info', 'Sessão de processamento finalizada', 'Sistema pronto para nova sessão');
     }
-  }, [initializeVideos, processVideo, startDelayCountdown, updateVideoState, processingState, toast, addLog]);
+  }, [initializeVideos, processVideo, startDelayCountdown, updateVideoState, processingState, toast, addLog, clearLogs]);
 
   const getOverallProgress = useCallback((videos: TikTokVideo[]) => {
     if (videos.length === 0) return 0;

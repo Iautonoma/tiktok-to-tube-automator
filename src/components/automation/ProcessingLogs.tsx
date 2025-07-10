@@ -1,9 +1,11 @@
+
 import React, { useEffect, useRef } from 'react';
-import { AlertTriangle, CheckCircle2, Info, Clock, ExternalLink } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Clock, ExternalLink, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 import { useGlobalLogs, LogEntry } from '@/contexts/LogsContext';
 
 interface ProcessingLogsProps {
@@ -40,7 +42,7 @@ function LogMessage({ message }: { message: string }) {
 }
 
 export function ProcessingLogs({ className }: ProcessingLogsProps) {
-  const { logs } = useGlobalLogs();
+  const { logs, clearLogs } = useGlobalLogs();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new logs are added
@@ -79,14 +81,31 @@ export function ProcessingLogs({ className }: ProcessingLogsProps) {
     }
   };
 
+  const handleClearLogs = () => {
+    clearLogs();
+  };
+
   return (
     <Card className={`bg-background/30 border-border/30 ${className}`}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">Logs de Processamento</CardTitle>
-          <Badge variant="outline" className="text-xs">
-            {logs.length} entradas
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              {logs.length} entradas
+            </Badge>
+            {logs.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearLogs}
+                className="h-6 px-2 text-xs"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Limpar
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -96,6 +115,7 @@ export function ProcessingLogs({ className }: ProcessingLogsProps) {
               <div className="text-center">
                 <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">Aguardando logs...</p>
+                <p className="text-xs mt-1">Os logs da sessão anterior foram limpos</p>
               </div>
             </div>
           ) : (
