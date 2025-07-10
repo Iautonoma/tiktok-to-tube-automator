@@ -1,51 +1,35 @@
-import { useState, useEffect } from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import React, { useEffect, useRef } from 'react';
+import { AlertTriangle, CheckCircle2, Info, Clock, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Info, AlertTriangle, CheckCircle2, Timer, ExternalLink } from 'lucide-react';
-
-export interface LogEntry {
-  id: string;
-  timestamp: Date;
-  level: 'info' | 'warning' | 'error' | 'success';
-  message: string;
-  details?: string;
-  videoId?: string;
-}
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
+import { useGlobalLogs, LogEntry } from '@/contexts/LogsContext';
 
 interface ProcessingLogsProps {
-  logs: LogEntry[];
   className?: string;
 }
 
-// Component to render messages with clickable links
 function LogMessage({ message }: { message: string }) {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const tikTokRegex = /(https?:\/\/(?:www\.)?tiktok\.com\/[^\s]+|https?:\/\/vm\.tiktok\.com\/[^\s]+)/g;
-  
-  const parts = message.split(urlRegex);
+  // Enhanced URL detection to make links clickable
+  const linkRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = message.split(linkRegex);
   
   return (
-    <span className="break-words">
+    <span>
       {parts.map((part, index) => {
-        if (urlRegex.test(part)) {
-          const isTikTokUrl = tikTokRegex.test(part);
+        if (linkRegex.test(part)) {
+          const isTikTokLink = part.includes('tiktok.com');
           return (
             <a
               key={index}
               href={part}
               target="_blank"
               rel="noopener noreferrer"
-              className={`inline-flex items-center gap-1 ${
-                isTikTokUrl 
-                  ? 'text-pink-500 hover:text-pink-400 font-medium' 
-                  : 'text-blue-500 hover:text-blue-400'
-              } underline hover:no-underline transition-colors`}
-              onClick={(e) => e.stopPropagation()}
+              className="text-primary hover:text-primary-glow underline inline-flex items-center gap-1"
             >
-              {isTikTokUrl ? '🎵' : '🔗'}
-              {part.length > 50 ? `${part.substring(0, 50)}...` : part}
-              <ExternalLink className="h-2 w-2" />
+              {isTikTokLink ? '🎵' : '🔗'} {part}
+              <ExternalLink className="h-3 w-3" />
             </a>
           );
         }
@@ -55,109 +39,98 @@ function LogMessage({ message }: { message: string }) {
   );
 }
 
-export function ProcessingLogs({ logs, className }: ProcessingLogsProps) {
-  const [autoScroll, setAutoScroll] = useState(true);
+export function ProcessingLogs({ className }: ProcessingLogsProps) {
+  const { logs } = useGlobalLogs();
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom when new logs are added
   useEffect(() => {
-    if (autoScroll && logs.length > 0) {
-      const scrollElement = document.querySelector('[data-radix-scroll-area-viewport]');
+    if (scrollAreaRef.current) {
+      const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [logs, autoScroll]);
+  }, [logs.length]);
 
   const getLogIcon = (level: LogEntry['level']) => {
     switch (level) {
-      case 'info':
-        return <Info className="h-3 w-3 text-blue-500" />;
-      case 'warning':
-        return <AlertTriangle className="h-3 w-3 text-yellow-500" />;
       case 'error':
         return <AlertTriangle className="h-3 w-3 text-red-500" />;
+      case 'warning':
+        return <AlertTriangle className="h-3 w-3 text-yellow-500" />;
       case 'success':
         return <CheckCircle2 className="h-3 w-3 text-green-500" />;
+      default:
+        return <Info className="h-3 w-3 text-blue-500" />;
     }
   };
 
   const getLogVariant = (level: LogEntry['level']) => {
     switch (level) {
-      case 'info':
-        return 'secondary';
-      case 'warning':
-        return 'outline';
       case 'error':
-        return 'destructive';
+        return 'destructive' as const;
+      case 'warning':
+        return 'outline' as const;
       case 'success':
-        return 'default';
+        return 'default' as const;
+      default:
+        return 'secondary' as const;
     }
   };
 
   return (
-    <Card className={className}>
+    <Card className={`bg-background/30 border-border/30 ${className}`}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Logs do Sistema ({logs.length})
-          </CardTitle>
+          <CardTitle className="text-sm font-medium">Logs de Processamento</CardTitle>
           <Badge variant="outline" className="text-xs">
-            Auto-scroll: {autoScroll ? 'ON' : 'OFF'}
+            {logs.length} entradas
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <ScrollArea 
-          className="h-48 px-4 pb-4"
-          onScrollCapture={(e) => {
-            const target = e.currentTarget.querySelector('[data-radix-scroll-area-viewport]');
-            if (target) {
-              const isAtBottom = Math.abs(target.scrollHeight - target.clientHeight - target.scrollTop) < 10;
-              setAutoScroll(isAtBottom);
-            }
-          }}
-        >
-          <div className="space-y-2">
-            {logs.length === 0 ? (
-              <div className="text-center text-sm text-muted-foreground py-4">
-                Aguardando logs do sistema...
+      <CardContent>
+        <ScrollArea ref={scrollAreaRef} className="h-48 w-full">
+          {logs.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <div className="text-center">
+                <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Aguardando logs...</p>
               </div>
-            ) : (
-              logs.map((log) => (
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {logs.map((log) => (
                 <div
                   key={log.id}
-                  className="flex items-start gap-2 text-xs p-2 rounded border border-border/50 bg-background/30"
+                  className="flex flex-col gap-1 p-2 rounded-lg bg-background/20 border border-border/20 text-xs"
                 >
-                  <div className="flex-shrink-0 mt-0.5">
+                  <div className="flex items-center gap-2">
                     {getLogIcon(log.level)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-muted-foreground">
-                        {log.timestamp.toLocaleTimeString('pt-BR')}
-                      </span>
-                      <Badge variant={getLogVariant(log.level)} className="text-xs h-4">
-                        {log.level.toUpperCase()}
+                    <Badge variant={getLogVariant(log.level)} className="text-xs h-5">
+                      {log.level.toUpperCase()}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      {log.timestamp.toLocaleTimeString('pt-BR')}
+                    </span>
+                    {log.videoId && (
+                      <Badge variant="outline" className="text-xs h-5">
+                        {log.videoId.slice(-8)}
                       </Badge>
-                      {log.videoId && (
-                        <Badge variant="outline" className="text-xs h-4">
-                          {log.videoId.substring(0, 8)}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-foreground">
-                      <LogMessage message={log.message} />
-                    </div>
-                    {log.details && (
-                      <div className="text-muted-foreground mt-1 text-xs">
-                        <LogMessage message={log.details} />
-                      </div>
                     )}
                   </div>
+                  <div className="text-sm">
+                    <LogMessage message={log.message} />
+                  </div>
+                  {log.details && (
+                    <div className="text-xs text-muted-foreground mt-1 pl-4 border-l-2 border-border/30">
+                      <LogMessage message={log.details} />
+                    </div>
+                  )}
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </ScrollArea>
       </CardContent>
     </Card>
@@ -169,29 +142,32 @@ export function DelayCountdown({
   totalSeconds = 60 
 }: { 
   remainingSeconds: number; 
-  totalSeconds?: number; 
+  totalSeconds?: number;
 }) {
-  const progress = ((totalSeconds - remainingSeconds) / totalSeconds) * 100;
-
+  const progress = totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
+  
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-      <Timer className="h-4 w-4 text-orange-500 animate-pulse" />
-      <div className="flex-1">
-        <div className="flex items-center justify-between mb-1">
+    <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 bg-orange-500 rounded-full animate-pulse" />
           <span className="text-sm font-medium text-orange-700 dark:text-orange-300">
-            Aguardando próximo download
-          </span>
-          <span className="text-sm text-orange-600 dark:text-orange-400">
-            {remainingSeconds}s restantes
+            Rate Limit Delay
           </span>
         </div>
-        <div className="w-full bg-orange-200 dark:bg-orange-900/30 rounded-full h-2">
-          <div 
-            className="bg-orange-500 h-2 rounded-full transition-all duration-1000" 
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        <span className="text-sm font-mono text-orange-700 dark:text-orange-300">
+          {remainingSeconds}s
+        </span>
       </div>
+      <Progress 
+        value={progress} 
+        className="h-2" 
+      />
+      <p className="text-xs text-muted-foreground mt-1">
+        Aguardando para evitar bloqueios...
+      </p>
     </div>
   );
 }
+
+export type { LogEntry };

@@ -1,14 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import { Download, Upload, Trash2, ExternalLink, AlertTriangle, CheckCircle2, Clock, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import { TikTokVideo, ProcessingStep } from '@/lib/types/automation';
-import { tiktokService } from '@/lib/services/tiktok-service';
-import { gofileService } from '@/lib/services/gofile-service';
-import { ProcessingLogs, LogEntry, DelayCountdown } from './ProcessingLogs';
+import { TikTokVideo } from '@/lib/types/automation';
+import { ProcessingLogs, DelayCountdown } from './ProcessingLogs';
+import { useVideoProcessor } from '@/hooks/useVideoProcessor';
 
 interface VideoProcessorProps {
   videos: TikTokVideo[];
@@ -17,350 +15,31 @@ interface VideoProcessorProps {
   onProcessingChange: (processing: boolean) => void;
 }
 
-interface VideoProcessingState {
-  videoId: string;
-  status: 'pending' | 'downloading' | 'uploading' | 'completed' | 'error' | 'waiting';
-  progress: number;
-  error?: string;
-  downloadUrl?: string;
-  gofileUrl?: string;
-  startTime?: Date;
-  downloadSpeed?: string;
-  fileSize?: string;
-}
-
 export function VideoProcessor({
   videos,
   onProcessingComplete,
   isProcessing,
   onProcessingChange
 }: VideoProcessorProps) {
-  const [processingState, setProcessingState] = useState<Map<string, VideoProcessingState>>(new Map());
-  const [currentStep, setCurrentStep] = useState<ProcessingStep | null>(null);
-  const [retryCount, setRetryCount] = useState<Map<string, number>>(new Map());
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [delayCountdown, setDelayCountdown] = useState<number>(0);
-  const [currentVideoIndex, setCurrentVideoIndex] = useState<number>(0);
-  const { toast } = useToast();
+  const {
+    processingState,
+    currentStep,
+    delayCountdown,
+    currentVideoIndex,
+    isProcessing: processingInProgress,
+    processVideos,
+    getOverallProgress,
+    getStatusCounts
+  } = useVideoProcessor();
 
-  // Initialize processing state for videos
-  useEffect(() => {
-    const newState = new Map<string, VideoProcessingState>();
-    videos.forEach(video => {
-      newState.set(video.id, {
-        videoId: video.id,
-        status: 'pending',
-        progress: 0
-      });
-    });
-    setProcessingState(newState);
-  }, [videos]);
-
-  const addLog = useCallback((level: LogEntry['level'], message: string, details?: string, videoId?: string) => {
-    const newLog: LogEntry = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      timestamp: new Date(),
-      level,
-      message,
-      details,
-      videoId
-    };
-    setLogs(prev => [...prev, newLog]);
-    console.log(`[${level.toUpperCase()}] ${message}${details ? ` - ${details}` : ''}`);
-  }, []);
-
-  const updateVideoState = useCallback((videoId: string, updates: Partial<VideoProcessingState>) => {
-    setProcessingState(prev => {
-      const newState = new Map(prev);
-      const current = newState.get(videoId);
-      if (current) {
-        newState.set(videoId, { ...current, ...updates });
-      }
-      return newState;
-    });
-  }, []);
-
-  const startDelayCountdown = useCallback((seconds: number, videoId: string) => {
-    setDelayCountdown(seconds);
-    addLog('info', `Iniciando delay de ${seconds}s antes do próximo download`, `Rate limiting obrigatório`, videoId);
-    
-    const interval = setInterval(() => {
-      setDelayCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          addLog('info', 'Delay concluído, iniciando download', undefined, videoId);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    
-    return interval;
-  }, [addLog]);
-
-  const processVideo = useCallback(async (video: TikTokVideo, videoIndex: number, maxRetries = 3): Promise<boolean> => {
-    const videoId = video.id;
-    const startTime = new Date();
-    
-    addLog('info', `Iniciando processamento do vídeo ${videoIndex + 1}/${videos.length}`, `@${video.author} - ${video.url}`, videoId);
-
-    try {
-      updateVideoState(videoId, { 
-        status: 'downloading', 
-        progress: 5,
-        startTime
-      });
-
-      // Step 1: Download from TikTok via ssstik.io
-      setCurrentStep({
-        id: `download_${videoId}`,
-        name: `Baixando ${video.author} (${videoIndex + 1}/${videos.length})`,
-        status: 'processing',
-        progress: 10,
-        timestamp: new Date()
-      });
-
-      addLog('info', 'Iniciando download do TikTok', `Usando ssstik.io - ${video.url}`, videoId);
-      updateVideoState(videoId, { progress: 10 });
-
-      const downloadResponse = await tiktokService.downloadVideo(video);
-      
-      if (!downloadResponse.success) {
-        const errorDetail = downloadResponse.error || 'Falha no download';
-        addLog('error', 'Falha no download do TikTok', `Erro: ${errorDetail} - URL: ${video.url}`, videoId);
-        throw new Error(errorDetail);
-      }
-
-      const downloadTime = new Date().getTime() - startTime.getTime();
-      addLog('success', 'Download concluído com sucesso', `Tempo: ${(downloadTime/1000).toFixed(1)}s - URL baixada: ${downloadResponse.data}`, videoId);
-
-      updateVideoState(videoId, { 
-        progress: 50, 
-        downloadUrl: downloadResponse.data
-      });
-
-      // Step 2: Upload to Gofile
-      updateVideoState(videoId, { status: 'uploading', progress: 60 });
-      setCurrentStep({
-        id: `upload_${videoId}`,
-        name: `Enviando para Gofile (${videoIndex + 1}/${videos.length})`,
-        status: 'processing',
-        progress: 60,
-        timestamp: new Date()
-      });
-
-      const fileName = `${video.id}_${video.author.replace('@', '')}.mp4`;
-      addLog('info', 'Iniciando upload para Gofile', `Arquivo: ${fileName} - URL fonte: ${downloadResponse.data}`, videoId);
-      
-      const uploadResponse = await gofileService.uploadFile(
-        downloadResponse.data!,
-        fileName
-      );
-
-      if (!uploadResponse.success) {
-        const errorDetail = uploadResponse.error || 'Falha no upload';
-        addLog('error', 'Falha no upload para Gofile', `Erro: ${errorDetail} - Arquivo: ${fileName}`, videoId);
-        throw new Error(errorDetail);
-      }
-
-      const totalTime = new Date().getTime() - startTime.getTime();
-      addLog('success', 'Upload concluído com sucesso', `Tempo total: ${(totalTime/1000).toFixed(1)}s - Link: ${uploadResponse.data?.downloadPage}`, videoId);
-
-      updateVideoState(videoId, {
-        status: 'completed',
-        progress: 100,
-        gofileUrl: uploadResponse.data?.downloadPage
-      });
-
-      setCurrentStep({
-        id: `complete_${videoId}`,
-        name: `Vídeo ${videoIndex + 1}/${videos.length} processado`,
-        status: 'completed',
-        progress: 100,
-        timestamp: new Date()
-      });
-
-      return true;
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog('error', 'Erro durante processamento', `${errorMessage} - Vídeo: ${video.url}`, videoId);
-
-      const currentRetries = retryCount.get(videoId) || 0;
-      
-      if (currentRetries < maxRetries) {
-        setRetryCount(prev => new Map(prev).set(videoId, currentRetries + 1));
-        
-        addLog('warning', `Tentativa de retry ${currentRetries + 1}/${maxRetries}`, `Aguardando ${(currentRetries + 1) * 2}s - Erro: ${errorMessage}`, videoId);
-        
-        toast({
-          title: "Tentativa de Retry",
-          description: `Tentando novamente (${currentRetries + 1}/${maxRetries})`,
-          variant: "default"
-        });
-
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, 2000 * (currentRetries + 1)));
-        return await processVideo(video, videoIndex, maxRetries);
-      }
-
-      // Max retries reached - mark as error and continue to next video
-      addLog('error', `Falha após ${maxRetries} tentativas`, `Erro final: ${errorMessage} - Vídeo: ${video.url} - Pulando para próximo`, videoId);
-
-      updateVideoState(videoId, {
-        status: 'error',
-        progress: 0,
-        error: errorMessage
-      });
-
-      setCurrentStep({
-        id: `error_${videoId}`,
-        name: `Erro no vídeo ${videoIndex + 1}/${videos.length} - Continuando...`,
-        status: 'error',
-        error: errorMessage,
-        timestamp: new Date()
-      });
-
-      // Return false to indicate failure, but processing will continue
-      return false;
-    }
-  }, [updateVideoState, retryCount, toast, addLog, videos.length]);
-
-  const startProcessing = useCallback(async () => {
-    if (videos.length === 0) {
-      toast({
-        title: "Nenhum Vídeo",
-        description: "Colete vídeos antes de processar",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Clear previous logs and reset state
-    setLogs([]);
-    setCurrentVideoIndex(0);
+  // Handle start processing
+  const handleStartProcessing = () => {
     onProcessingChange(true);
-    
-    addLog('info', `Iniciando processamento em lote`, `${videos.length} vídeos na fila`);
-
-    try {
-      const processedVideos: TikTokVideo[] = [];
-      const failedVideos: string[] = [];
-      
-      for (let i = 0; i < videos.length; i++) {
-        const video = videos[i];
-        setCurrentVideoIndex(i);
-        
-        addLog('info', `Processando vídeo ${i + 1}/${videos.length}`, `@${video.author} - ${video.url}`);
-        
-        try {
-          // Add delay countdown before each download (except the first one)
-          if (i > 0) {
-            updateVideoState(video.id, { status: 'waiting', progress: 0 });
-            addLog('info', `Aguardando delay obrigatório antes do vídeo ${i + 1}`, 'Rate limiting para evitar bloqueios');
-            
-            const countdownInterval = startDelayCountdown(60, video.id);
-            
-            // Wait for countdown to finish
-            await new Promise<void>(resolve => {
-              const checkCountdown = setInterval(() => {
-                if (delayCountdown <= 1) {
-                  clearInterval(checkCountdown);
-                  clearInterval(countdownInterval);
-                  resolve();
-                }
-              }, 100);
-            });
-          }
-          
-          const success = await processVideo(video, i);
-          
-          if (success) {
-            const state = processingState.get(video.id);
-            processedVideos.push({
-              ...video,
-              downloadUrl: state?.gofileUrl
-            });
-            addLog('success', `Vídeo ${i + 1}/${videos.length} processado com sucesso`, `Total processados: ${processedVideos.length}`);
-          } else {
-            failedVideos.push(video.id);
-            addLog('error', `Vídeo ${i + 1}/${videos.length} falhou`, `URL: ${video.url} - Continuando para próximo. Total falhas: ${failedVideos.length}`);
-          }
-          
-        } catch (error) {
-          // Catch any unexpected errors and continue processing
-          const errorMessage = error instanceof Error ? error.message : 'Erro inesperado';
-          failedVideos.push(video.id);
-          addLog('error', `Erro inesperado no vídeo ${i + 1}/${videos.length}`, `${errorMessage} - URL: ${video.url} - Continuando...`);
-          
-          updateVideoState(video.id, {
-            status: 'error',
-            progress: 0,
-            error: errorMessage
-          });
-        }
-        
-        // Show progress update
-        const totalProgress = Math.round(((i + 1) / videos.length) * 100);
-        addLog('info', `Progresso geral: ${totalProgress}%`, `${i + 1}/${videos.length} vídeos processados`);
-      }
-
-      onProcessingComplete(processedVideos);
-      
-      const successCount = processedVideos.length;
-      const errorCount = failedVideos.length;
-
-      addLog('success', 'Processamento em lote concluído', `${successCount} sucessos, ${errorCount} erros`);
-
-      toast({
-        title: "Processamento Concluído",
-        description: `${successCount} vídeos processados, ${errorCount} erros`,
-        variant: successCount > 0 ? "default" : "destructive"
-      });
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro no processamento em lote';
-      addLog('error', 'Erro crítico no processamento', errorMessage);
-      
-      toast({
-        title: "Erro no Processamento",
-        description: errorMessage,
-        variant: "destructive"
-      });
-    } finally {
-      onProcessingChange(false);
-      setCurrentStep(null);
-      setDelayCountdown(0);
-      setCurrentVideoIndex(0);
-      addLog('info', 'Sessão de processamento finalizada', 'Sistema pronto para nova sessão');
-    }
-  }, [videos, processVideo, onProcessingChange, onProcessingComplete, processingState, toast, addLog, startDelayCountdown, delayCountdown]);
-
-  const getOverallProgress = () => {
-    if (videos.length === 0) return 0;
-    
-    const totalProgress = Array.from(processingState.values())
-      .reduce((sum, state) => sum + state.progress, 0);
-    
-    return Math.round(totalProgress / videos.length);
-  };
-
-  const getStatusCounts = () => {
-    const counts = { pending: 0, processing: 0, completed: 0, error: 0, waiting: 0 };
-    
-    processingState.forEach(state => {
-      if (state.status === 'downloading' || state.status === 'uploading') {
-        counts.processing++;
-      } else {
-        counts[state.status]++;
-      }
-    });
-
-    return counts;
+    processVideos(videos, onProcessingComplete);
   };
 
   const statusCounts = getStatusCounts();
-  const overallProgress = getOverallProgress();
+  const overallProgress = getOverallProgress(videos);
 
   return (
     <Card className="bg-gradient-to-br from-glass-bg to-card/50 border-glass-border backdrop-blur-md shadow-glass animate-slide-up">
@@ -429,7 +108,7 @@ export function VideoProcessor({
         )}
 
         {/* Processing Logs */}
-        <ProcessingLogs logs={logs} />
+        <ProcessingLogs />
 
         {/* Video List */}
         {videos.length > 0 && (
@@ -486,11 +165,11 @@ export function VideoProcessor({
 
         {/* Action Button */}
         <Button
-          onClick={startProcessing}
-          disabled={isProcessing || videos.length === 0}
+          onClick={handleStartProcessing}
+          disabled={isProcessing || processingInProgress || videos.length === 0}
           className="w-full bg-gradient-to-r from-primary to-primary-glow hover:shadow-glow transition-all duration-300"
         >
-          {isProcessing ? (
+          {isProcessing || processingInProgress ? (
             <>
               <div className="animate-processing mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
               Processando Vídeos...

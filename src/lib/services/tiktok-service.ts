@@ -46,16 +46,22 @@ class TikTokService {
       // Simulate API call with realistic delay
       await this.delay(1000 + Math.random() * 2000);
 
-      // Mock data for development
-      const mockVideos: TikTokVideo[] = Array.from({ length: Math.min(count, 20) }, (_, i) => ({
-        id: `tiktok_${Date.now()}_${i}`,
-        author: `@creator${i + 1}`,
-        description: `Amazing ${keyword} video #${i + 1} with trending content`,
-        url: `https://www.tiktok.com/@creator${i + 1}/video/${Date.now()}${i}`,
-        thumbnail: `https://picsum.photos/300/400?random=${i}`,
-        duration: 15 + Math.floor(Math.random() * 45), // 15-60 seconds
-        tags: [keyword, `tag${i + 1}`, 'trending', 'viral'],
-      }));
+      // Generate realistic mock data that simulates real TikTok videos
+      const mockVideos: TikTokVideo[] = Array.from({ length: Math.min(count, 20) }, (_, i) => {
+        const creatorNames = ['dancequeen', 'cookingtips', 'funnymoments', 'lifestyle', 'techreview', 'petlover', 'artist', 'traveler', 'fitness', 'gamer'];
+        const randomCreator = creatorNames[i % creatorNames.length];
+        const videoId = `${Date.now()}${String(i).padStart(3, '0')}${Math.floor(Math.random() * 1000)}`;
+        
+        return {
+          id: `tiktok_${videoId}`,
+          author: `@${randomCreator}${i + 1}`,
+          description: `${keyword} content - Amazing video #${i + 1} with trending hashtags #${keyword} #viral #fyp`,
+          url: `https://www.tiktok.com/@${randomCreator}${i + 1}/video/${videoId}`,
+          thumbnail: `https://picsum.photos/300/400?random=${videoId}`,
+          duration: 15 + Math.floor(Math.random() * 45), // 15-60 seconds
+          tags: [keyword, `tag${i + 1}`, 'trending', 'viral', 'fyp'],
+        };
+      });
 
       // Apply filters
       let filteredVideos = mockVideos;
