@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Info, AlertTriangle, CheckCircle2, Timer } from 'lucide-react';
+import { Clock, Info, AlertTriangle, CheckCircle2, Timer, ExternalLink } from 'lucide-react';
 
 export interface LogEntry {
   id: string;
@@ -16,6 +16,43 @@ export interface LogEntry {
 interface ProcessingLogsProps {
   logs: LogEntry[];
   className?: string;
+}
+
+// Component to render messages with clickable links
+function LogMessage({ message }: { message: string }) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const tikTokRegex = /(https?:\/\/(?:www\.)?tiktok\.com\/[^\s]+|https?:\/\/vm\.tiktok\.com\/[^\s]+)/g;
+  
+  const parts = message.split(urlRegex);
+  
+  return (
+    <span className="break-words">
+      {parts.map((part, index) => {
+        if (urlRegex.test(part)) {
+          const isTikTokUrl = tikTokRegex.test(part);
+          return (
+            <a
+              key={index}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center gap-1 ${
+                isTikTokUrl 
+                  ? 'text-pink-500 hover:text-pink-400 font-medium' 
+                  : 'text-blue-500 hover:text-blue-400'
+              } underline hover:no-underline transition-colors`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isTikTokUrl ? '🎵' : '🔗'}
+              {part.length > 50 ? `${part.substring(0, 50)}...` : part}
+              <ExternalLink className="h-2 w-2" />
+            </a>
+          );
+        }
+        return part;
+      })}
+    </span>
+  );
 }
 
 export function ProcessingLogs({ logs, className }: ProcessingLogsProps) {
@@ -109,11 +146,11 @@ export function ProcessingLogs({ logs, className }: ProcessingLogsProps) {
                       )}
                     </div>
                     <div className="text-foreground">
-                      {log.message}
+                      <LogMessage message={log.message} />
                     </div>
                     {log.details && (
                       <div className="text-muted-foreground mt-1 text-xs">
-                        {log.details}
+                        <LogMessage message={log.details} />
                       </div>
                     )}
                   </div>

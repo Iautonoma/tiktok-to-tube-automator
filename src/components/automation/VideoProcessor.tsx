@@ -102,7 +102,7 @@ export function VideoProcessor({
     const videoId = video.id;
     const startTime = new Date();
     
-    addLog('info', `Iniciando processamento do vídeo ${videoIndex + 1}/${videos.length}`, `@${video.author} - ${video.description.substring(0, 50)}...`, videoId);
+    addLog('info', `Iniciando processamento do vídeo ${videoIndex + 1}/${videos.length}`, `@${video.author} - ${video.url}`, videoId);
 
     try {
       updateVideoState(videoId, { 
@@ -120,17 +120,19 @@ export function VideoProcessor({
         timestamp: new Date()
       });
 
-      addLog('info', 'Iniciando download do TikTok', `Usando ssstik.io para ${video.url}`, videoId);
+      addLog('info', 'Iniciando download do TikTok', `Usando ssstik.io - ${video.url}`, videoId);
       updateVideoState(videoId, { progress: 10 });
 
       const downloadResponse = await tiktokService.downloadVideo(video);
       
       if (!downloadResponse.success) {
-        throw new Error(downloadResponse.error || 'Falha no download');
+        const errorDetail = downloadResponse.error || 'Falha no download';
+        addLog('error', 'Falha no download do TikTok', `Erro: ${errorDetail} - URL: ${video.url}`, videoId);
+        throw new Error(errorDetail);
       }
 
       const downloadTime = new Date().getTime() - startTime.getTime();
-      addLog('success', 'Download concluído com sucesso', `Tempo: ${(downloadTime/1000).toFixed(1)}s`, videoId);
+      addLog('success', 'Download concluído com sucesso', `Tempo: ${(downloadTime/1000).toFixed(1)}s - URL baixada: ${downloadResponse.data}`, videoId);
 
       updateVideoState(videoId, { 
         progress: 50, 
@@ -148,7 +150,7 @@ export function VideoProcessor({
       });
 
       const fileName = `${video.id}_${video.author.replace('@', '')}.mp4`;
-      addLog('info', 'Iniciando upload para Gofile', `Arquivo: ${fileName}`, videoId);
+      addLog('info', 'Iniciando upload para Gofile', `Arquivo: ${fileName} - URL fonte: ${downloadResponse.data}`, videoId);
       
       const uploadResponse = await gofileService.uploadFile(
         downloadResponse.data!,
@@ -156,11 +158,13 @@ export function VideoProcessor({
       );
 
       if (!uploadResponse.success) {
-        throw new Error(uploadResponse.error || 'Falha no upload');
+        const errorDetail = uploadResponse.error || 'Falha no upload';
+        addLog('error', 'Falha no upload para Gofile', `Erro: ${errorDetail} - Arquivo: ${fileName}`, videoId);
+        throw new Error(errorDetail);
       }
 
       const totalTime = new Date().getTime() - startTime.getTime();
-      addLog('success', 'Upload concluído com sucesso', `Tempo total: ${(totalTime/1000).toFixed(1)}s`, videoId);
+      addLog('success', 'Upload concluído com sucesso', `Tempo total: ${(totalTime/1000).toFixed(1)}s - Link: ${uploadResponse.data?.downloadPage}`, videoId);
 
       updateVideoState(videoId, {
         status: 'completed',
@@ -180,14 +184,14 @@ export function VideoProcessor({
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      addLog('error', 'Erro durante processamento', errorMessage, videoId);
+      addLog('error', 'Erro durante processamento', `${errorMessage} - Vídeo: ${video.url}`, videoId);
 
       const currentRetries = retryCount.get(videoId) || 0;
       
       if (currentRetries < maxRetries) {
         setRetryCount(prev => new Map(prev).set(videoId, currentRetries + 1));
         
-        addLog('warning', `Tentativa de retry ${currentRetries + 1}/${maxRetries}`, `Aguardando ${(currentRetries + 1) * 2}s`, videoId);
+        addLog('warning', `Tentativa de retry ${currentRetries + 1}/${maxRetries}`, `Aguardando ${(currentRetries + 1) * 2}s - Erro: ${errorMessage}`, videoId);
         
         toast({
           title: "Tentativa de Retry",
@@ -201,7 +205,7 @@ export function VideoProcessor({
       }
 
       // Max retries reached - mark as error and continue to next video
-      addLog('error', `Falha após ${maxRetries} tentativas`, `Pulando para próximo vídeo`, videoId);
+      addLog('error', `Falha após ${maxRetries} tentativas`, `Erro final: ${errorMessage} - Vídeo: ${video.url} - Pulando para próximo`, videoId);
 
       updateVideoState(videoId, {
         status: 'error',
@@ -247,7 +251,7 @@ export function VideoProcessor({
         const video = videos[i];
         setCurrentVideoIndex(i);
         
-        addLog('info', `Processando vídeo ${i + 1}/${videos.length}`, `@${video.author}`);
+        addLog('info', `Processando vídeo ${i + 1}/${videos.length}`, `@${video.author} - ${video.url}`);
         
         try {
           // Add delay countdown before each download (except the first one)
@@ -280,14 +284,14 @@ export function VideoProcessor({
             addLog('success', `Vídeo ${i + 1}/${videos.length} processado com sucesso`, `Total processados: ${processedVideos.length}`);
           } else {
             failedVideos.push(video.id);
-            addLog('error', `Vídeo ${i + 1}/${videos.length} falhou`, `Continuando para próximo vídeo. Total falhas: ${failedVideos.length}`);
+            addLog('error', `Vídeo ${i + 1}/${videos.length} falhou`, `URL: ${video.url} - Continuando para próximo. Total falhas: ${failedVideos.length}`);
           }
           
         } catch (error) {
           // Catch any unexpected errors and continue processing
           const errorMessage = error instanceof Error ? error.message : 'Erro inesperado';
           failedVideos.push(video.id);
-          addLog('error', `Erro inesperado no vídeo ${i + 1}/${videos.length}`, `${errorMessage}. Continuando...`);
+          addLog('error', `Erro inesperado no vídeo ${i + 1}/${videos.length}`, `${errorMessage} - URL: ${video.url} - Continuando...`);
           
           updateVideoState(video.id, {
             status: 'error',
