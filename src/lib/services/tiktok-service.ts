@@ -109,10 +109,6 @@ class TikTokService {
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      // Add 60-second delay between downloads as requested
-      console.log(`[AutomationSystem] Waiting 60 seconds before download: ${video.id}`);
-      await this.delay(60000);
-
       // Real ssstik.io integration
       const ssstikUrl = 'https://ssstik.io/abc';
       
@@ -131,7 +127,8 @@ class TikTokService {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Referer': 'https://ssstik.io/',
-        }
+        },
+        signal: AbortSignal.timeout(30000) // 30 second timeout
       });
 
       if (!ssstikResponse.ok) {
