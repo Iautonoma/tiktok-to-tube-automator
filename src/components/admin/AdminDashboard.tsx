@@ -377,12 +377,12 @@ export function AdminDashboard() {
                                 updateUserRole(user.user_id, value)
                               }
                             >
-                              <SelectTrigger className="w-24">
+                              <SelectTrigger className="w-28 bg-background border-border">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="user">Usuário</SelectItem>
-                                <SelectItem value="admin">Admin</SelectItem>
+                              <SelectContent className="bg-background border-border shadow-lg z-50">
+                                <SelectItem value="user" className="hover:bg-muted">Usuário</SelectItem>
+                                <SelectItem value="admin" className="hover:bg-muted">Admin</SelectItem>
                               </SelectContent>
                             </Select>
                             
