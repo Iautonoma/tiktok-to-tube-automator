@@ -52,9 +52,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       setProfile(profileData);
-      setUserRole(roleData?.role || 'user');
+      
+      // If no role exists, create one
+      if (!roleData && profileData) {
+        const isAdmin = profileData.email === 'bandanascombr@gmail.com';
+        await supabase
+          .from('user_roles')
+          .insert({
+            user_id: userId,
+            role: isAdmin ? 'admin' : 'user'
+          });
+        setUserRole(isAdmin ? 'admin' : 'user');
+      } else {
+        setUserRole(roleData?.role || 'user');
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      setUserRole('user'); // Default fallback
     }
   };
 
