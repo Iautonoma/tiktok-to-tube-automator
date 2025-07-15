@@ -105,62 +105,40 @@ class TikTokService {
   async downloadVideo(video: TikTokVideo): Promise<ServiceResponse<string>> {
     try {
       console.log(`[AutomationSystem] Downloading video: ${video.id}`);
+      console.log(`[AutomationSystem] Initiating TikTok download using proxy - ${video.url}`);
       
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      // Real ssstik.io integration
-      const ssstikUrl = 'https://ssstik.io/abc';
+      // Use Supabase Edge Function proxy to avoid CORS issues
+      const proxyUrl = 'https://fjzqjoaqorudgtalthnf.supabase.co/functions/v1/tiktok-proxy';
       
-      // Extract TikTok URL for ssstik.io
-      const tiktokUrl = video.url;
-      
-      // Call ssstik.io API to get download URL
-      const formData = new FormData();
-      formData.append('id', tiktokUrl);
-      formData.append('locale', 'pt');
-      formData.append('tt', 'UGhUcVFx');
-
-      const ssstikResponse = await fetch(ssstikUrl, {
+      const proxyResponse = await fetch(proxyUrl, {
         method: 'POST',
-        body: formData,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://ssstik.io/',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqenFqb2Fxb3J1ZGd0YWx0aG5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxMDQ2MDMsImV4cCI6MjA2NzY4MDYwM30.qznFuAlemI_CDeTU4SUvBAgZM6QtIana8sIKtuzjQis`
         },
-        signal: AbortSignal.timeout(30000) // 30 second timeout
+        body: JSON.stringify({ url: video.url }),
+        signal: AbortSignal.timeout(45000) // 45 second timeout
       });
 
-      if (!ssstikResponse.ok) {
-        throw new Error(`ssstik.io request failed: ${ssstikResponse.statusText}`);
+      if (!proxyResponse.ok) {
+        const errorData = await proxyResponse.json().catch(() => ({}));
+        throw new Error(`Proxy request failed: ${proxyResponse.statusText} - ${errorData.error || 'Unknown error'}`);
       }
 
-      const responseText = await ssstikResponse.text();
+      const proxyResult = await proxyResponse.json();
       
-      // Parse the response to extract download URL
-      const downloadUrlMatch = responseText.match(/href="([^"]*\.mp4[^"]*)"/);
-      
-      if (!downloadUrlMatch) {
-        throw new Error('Could not extract download URL from ssstik.io response');
+      if (!proxyResult.success || !proxyResult.downloadUrl) {
+        throw new Error(proxyResult.error || 'Failed to get download URL from proxy');
       }
 
-      const downloadUrl = downloadUrlMatch[1];
-      
-      // Validate the download URL
-      const videoResponse = await fetch(downloadUrl, { 
-        method: 'HEAD',
-        signal: AbortSignal.timeout(30000) // 30 second timeout
-      });
-      
-      if (!videoResponse.ok) {
-        throw new Error(`Video file not accessible: ${videoResponse.statusText}`);
-      }
-
-      console.log(`[AutomationSystem] Video downloaded successfully: ${video.id}`);
+      console.log(`[AutomationSystem] Video download URL obtained successfully: ${video.id}`);
       
       return {
         success: true,
-        data: downloadUrl
+        data: proxyResult.downloadUrl
       };
 
     } catch (error) {
