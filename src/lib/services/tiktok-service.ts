@@ -1,4 +1,5 @@
 import { TikTokVideo, ServiceResponse } from '@/lib/types/automation';
+import { supabase } from '@/integrations/supabase/client';
 
 class TikTokService {
   private apiKey: string | null = null;
@@ -111,27 +112,16 @@ class TikTokService {
       this.rateLimitCount++;
 
       // Use Supabase Edge Function proxy to avoid CORS issues
-      const proxyUrl = 'https://fjzqjoaqorudgtalthnf.supabase.co/functions/v1/tiktok-proxy';
-      
-      const proxyResponse = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqenFqb2Fxb3J1ZGd0YWx0aG5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxMDQ2MDMsImV4cCI6MjA2NzY4MDYwM30.qznFuAlemI_CDeTU4SUvBAgZM6QtIana8sIKtuzjQis`
-        },
-        body: JSON.stringify({ url: video.url }),
-        signal: AbortSignal.timeout(45000) // 45 second timeout
+      const { data: proxyResult, error } = await supabase.functions.invoke('tiktok-proxy', {
+        body: { url: video.url }
       });
 
-      if (!proxyResponse.ok) {
-        const errorData = await proxyResponse.json().catch(() => ({}));
-        throw new Error(`Proxy request failed: ${proxyResponse.statusText} - ${errorData.error || 'Unknown error'}`);
+      if (error) {
+        throw new Error(`Proxy error: ${error.message}`);
       }
-
-      const proxyResult = await proxyResponse.json();
       
-      if (!proxyResult.success || !proxyResult.downloadUrl) {
-        throw new Error(proxyResult.error || 'Failed to get download URL from proxy');
+      if (!proxyResult?.success || !proxyResult?.downloadUrl) {
+        throw new Error(proxyResult?.error || 'Failed to get download URL from proxy');
       }
 
       console.log(`[AutomationSystem] Video download URL obtained successfully: ${video.id}`);
