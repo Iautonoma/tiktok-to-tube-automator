@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { SecurityValidator } from '@/lib/security/validation';
 
 interface Profile {
   id: string;
@@ -113,28 +114,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
-      // Input validation and sanitization
-      if (!email || !password) {
-        return { error: { message: 'Email e senha são obrigatórios' } };
+      // Enhanced validation using SecurityValidator
+      const emailValidation = SecurityValidator.validateEmail(email);
+      if (!emailValidation.isValid) {
+        return { error: { message: emailValidation.errors.join(', ') } };
+      }
+
+      const passwordValidation = SecurityValidator.validatePassword(password);
+      if (!passwordValidation.isValid) {
+        return { error: { message: passwordValidation.errors.join(', ') } };
+      }
+
+      const nameValidation = fullName ? SecurityValidator.validateName(fullName) : { isValid: true, errors: [], sanitizedValue: undefined };
+      if (!nameValidation.isValid) {
+        return { error: { message: `Nome inválido: ${nameValidation.errors.join(', ')}` } };
       }
       
-      if (password.length < 6) {
-        return { error: { message: 'A senha deve ter pelo menos 6 caracteres' } };
-      }
-      
-      // Basic email format validation
-      const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
-      if (!emailRegex.test(email)) {
-        return { error: { message: 'Formato de email inválido' } };
-      }
-      
-      // Sanitize full name if provided
-      const sanitizedFullName = fullName ? fullName.trim().slice(0, 100) : undefined;
+      // Use sanitized values from validation
+      const sanitizedEmail = emailValidation.sanitizedValue || email.toLowerCase().trim();
+      const sanitizedFullName = nameValidation.sanitizedValue;
       
       const redirectUrl = `${window.location.origin}/`;
       
       const { error } = await supabase.auth.signUp({
-        email: email.toLowerCase().trim(),
+        email: sanitizedEmail,
         password,
         options: {
           emailRedirectTo: redirectUrl,
@@ -160,19 +163,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      // Input validation
-      if (!email || !password) {
-        return { error: { message: 'Email e senha são obrigatórios' } };
+      // Enhanced validation using SecurityValidator
+      const emailValidation = SecurityValidator.validateEmail(email);
+      if (!emailValidation.isValid) {
+        return { error: { message: 'Credenciais inválidas' } };
       }
-      
-      // Basic email format validation
-      const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
-      if (!emailRegex.test(email)) {
+
+      // Basic password validation (don't expose detailed password requirements during login)
+      if (!password || password.length < 1) {
         return { error: { message: 'Credenciais inválidas' } };
       }
       
       const { error } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase().trim(),
+        email: emailValidation.sanitizedValue || email.toLowerCase().trim(),
         password
       });
       

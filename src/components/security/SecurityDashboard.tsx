@@ -7,14 +7,18 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Shield, AlertTriangle, CheckCircle, XCircle, RefreshCw, Eye } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Shield, AlertTriangle, CheckCircle, XCircle, RefreshCw, Eye, History, Clock, Users } from 'lucide-react';
 import { securityAudit, SecurityEvent } from '@/lib/security/audit';
 import { getSecurityStatus } from '@/lib/security/environment';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 export function SecurityDashboard() {
   const { isAdmin } = useAuth();
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [adminActivity, setAdminActivity] = useState<any[]>([]);
   const [environmentStatus, setEnvironmentStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -24,18 +28,40 @@ export function SecurityDashboard() {
     }
   }, [isAdmin]);
 
-  const loadSecurityData = () => {
+  const loadSecurityData = async () => {
     setLoading(true);
     
-    // Load recent security events
-    const events = securityAudit.getRecentEvents(50);
-    setSecurityEvents(events);
-    
-    // Load environment security status
-    const envStatus = getSecurityStatus();
-    setEnvironmentStatus(envStatus);
-    
-    setLoading(false);
+    try {
+      // Load recent security events
+      const events = securityAudit.getRecentEvents(50);
+      setSecurityEvents(events);
+      
+      // Load audit logs from database
+      const { data: auditData } = await supabase
+        .from('role_change_audit')
+        .select(`
+          *,
+          target_profile:target_user_id(email, full_name),
+          changed_by_profile:changed_by(email, full_name)
+        `)
+        .order('timestamp', { ascending: false })
+        .limit(50);
+      
+      setAuditLogs(auditData || []);
+      
+      // Load admin activity summary
+      const { data: adminSummary } = await supabase.rpc('get_admin_activity_summary');
+      setAdminActivity(adminSummary || []);
+      
+      // Load environment security status
+      const envStatus = getSecurityStatus();
+      setEnvironmentStatus(envStatus);
+      
+    } catch (error) {
+      console.error('Error loading security data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getEventSeverityColor = (severity: SecurityEvent['severity']) => {
@@ -173,75 +199,209 @@ export function SecurityDashboard() {
         </Card>
       )}
 
-      {/* Security Events */}
+      {/* Security Monitoring Tabs */}
       <Card className="bg-gradient-to-br from-glass-bg to-card/50 border-glass-border backdrop-blur-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Eye className="h-5 w-5" />
-            Eventos de Segurança Recentes
+            <Shield className="h-5 w-5" />
+            Monitoramento de Segurança
           </CardTitle>
           <CardDescription>
-            Últimos {securityEvents.length} eventos de segurança registrados
+            Logs de auditoria, eventos de segurança e atividade administrativa
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="text-center py-8">
-              <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
-              <p className="text-muted-foreground">Carregando eventos...</p>
-            </div>
-          ) : securityEvents.length === 0 ? (
-            <div className="text-center py-8">
-              <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">Nenhum evento de segurança registrado</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Severidade</TableHead>
-                    <TableHead>Usuário</TableHead>
-                    <TableHead>Detalhes</TableHead>
-                    <TableHead>Timestamp</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {securityEvents.map((event, index) => (
-                    <TableRow key={event.id || index}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getEventTypeIcon(event.event_type)}
-                          <span className="text-sm">{formatEventType(event.event_type)}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getEventSeverityColor(event.severity) as any}>
-                          {event.severity.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {event.user_id ? event.user_id.substring(0, 8) + '...' : 'Anônimo'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs truncate text-sm">
-                          {JSON.stringify(event.details)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {formatTimestamp(event.timestamp)}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <Tabs defaultValue="audit" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="audit" className="flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Auditoria de Funções
+              </TabsTrigger>
+              <TabsTrigger value="events" className="flex items-center gap-2">
+                <Eye className="h-4 w-4" />
+                Eventos de Segurança
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Atividade Admin
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="audit" className="space-y-4">
+              {loading ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  <p className="text-muted-foreground">Carregando logs de auditoria...</p>
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="text-center py-8">
+                  <History className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Nenhuma alteração de função registrada</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuário Alvo</TableHead>
+                        <TableHead>Função Anterior</TableHead>
+                        <TableHead>Nova Função</TableHead>
+                        <TableHead>Alterado Por</TableHead>
+                        <TableHead>Motivo</TableHead>
+                        <TableHead>Data/Hora</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {auditLogs.map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-sm">{log.target_profile?.email || 'Email não encontrado'}</p>
+                              <p className="text-xs text-muted-foreground">{log.target_profile?.full_name || 'Nome não informado'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {log.old_role || 'N/A'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={log.new_role === 'admin' ? 'default' : 'secondary'} className="text-xs">
+                              {log.new_role}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">{log.changed_by_profile?.email || 'Sistema'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-xs truncate text-sm text-muted-foreground">
+                              {log.reason || 'Não especificado'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {formatTimestamp(log.timestamp)}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="events" className="space-y-4">
+              {loading ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  <p className="text-muted-foreground">Carregando eventos...</p>
+                </div>
+              ) : securityEvents.length === 0 ? (
+                <div className="text-center py-8">
+                  <Eye className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Nenhum evento de segurança registrado</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Severidade</TableHead>
+                        <TableHead>Usuário</TableHead>
+                        <TableHead>Detalhes</TableHead>
+                        <TableHead>Timestamp</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {securityEvents.map((event, index) => (
+                        <TableRow key={event.id || index}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getEventTypeIcon(event.event_type)}
+                              <span className="text-sm">{formatEventType(event.event_type)}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={getEventSeverityColor(event.severity) as any}>
+                              {event.severity.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {event.user_id ? event.user_id.substring(0, 8) + '...' : 'Anônimo'}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-xs truncate text-sm">
+                              {JSON.stringify(event.details)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {formatTimestamp(event.timestamp)}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="activity" className="space-y-4">
+              {loading ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  <p className="text-muted-foreground">Carregando atividade admin...</p>
+                </div>
+              ) : adminActivity.length === 0 ? (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Nenhuma atividade administrativa registrada</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Administrador</TableHead>
+                        <TableHead>Alterações de Função</TableHead>
+                        <TableHead>Última Atividade</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {adminActivity.map((admin, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <span className="font-medium text-sm">{admin.admin_email}</span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {admin.role_changes_count} alterações
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {admin.last_activity ? formatTimestamp(admin.last_activity) : 'Nunca'}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={admin.last_activity ? 'default' : 'secondary'} className="text-xs">
+                              {admin.last_activity ? 'Ativo' : 'Inativo'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

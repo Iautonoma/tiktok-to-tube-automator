@@ -122,6 +122,42 @@ export type Database = {
         }
         Relationships: []
       }
+      role_change_audit: {
+        Row: {
+          changed_by: string
+          id: string
+          ip_address: string | null
+          new_role: Database["public"]["Enums"]["app_role"]
+          old_role: Database["public"]["Enums"]["app_role"] | null
+          reason: string | null
+          target_user_id: string
+          timestamp: string
+          user_agent: string | null
+        }
+        Insert: {
+          changed_by: string
+          id?: string
+          ip_address?: string | null
+          new_role: Database["public"]["Enums"]["app_role"]
+          old_role?: Database["public"]["Enums"]["app_role"] | null
+          reason?: string | null
+          target_user_id: string
+          timestamp?: string
+          user_agent?: string | null
+        }
+        Update: {
+          changed_by?: string
+          id?: string
+          ip_address?: string | null
+          new_role?: Database["public"]["Enums"]["app_role"]
+          old_role?: Database["public"]["Enums"]["app_role"] | null
+          reason?: string | null
+          target_user_id?: string
+          timestamp?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -161,6 +197,14 @@ export type Database = {
       }
     }
     Functions: {
+      get_admin_activity_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          admin_email: string
+          role_changes_count: number
+          last_activity: string
+        }[]
+      }
       has_role: {
         Args: {
           _user_id: string
@@ -175,6 +219,18 @@ export type Database = {
       set_user_enabled: {
         Args: { target_user_id: string; is_enabled: boolean }
         Returns: boolean
+      }
+      update_user_role_secure: {
+        Args: {
+          target_user_id: string
+          new_role: Database["public"]["Enums"]["app_role"]
+          reason?: string
+        }
+        Returns: boolean
+      }
+      validate_and_sanitize_input: {
+        Args: { input_text: string; input_type?: string; max_length?: number }
+        Returns: string
       }
       validate_email_format: {
         Args: { email_input: string }

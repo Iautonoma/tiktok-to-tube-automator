@@ -115,37 +115,56 @@ export function AdminDashboard() {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: 'admin' | 'user') => {
+  const updateUserRole = async (userId: string, newRole: 'admin' | 'user', reason?: string) => {
     try {
-      const { error } = await supabase
-        .from('user_roles')
-        .update({ role: newRole })
-        .eq('user_id', userId);
-
-      if (error) throw error;
-
-      // Log security event
-      logAdminAction(
-        userId, 
-        'update_user_role', 
-        userId,
-        { oldRole: users.find(u => u.user_id === userId)?.role, newRole }
-      );
-
-      toast({
-        title: "Sucesso",
-        description: `Papel do usuário atualizado para ${newRole}`,
+      setLoading(true);
+      
+      // Use secure database function instead of direct update
+      const { error } = await supabase.rpc('update_user_role_secure', {
+        target_user_id: userId,
+        new_role: newRole,
+        reason: reason || 'Role updated via admin dashboard'
       });
-
-      fetchAdminData();
-
+      
+      if (error) {
+        // Handle specific security violations with user-friendly messages
+        if (error.message.includes('Security violation')) {
+          toast({
+            title: "🚫 Acesso Negado",
+            description: "Não é possível modificar sua própria função por segurança",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        if (error.message.includes('main administrator')) {
+          toast({
+            title: "🔒 Operação Não Permitida",
+            description: "Não é possível modificar a função do administrador principal",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        throw error;
+      }
+      
+      // Enhanced success message with security information
+      toast({
+        title: "✅ Função Atualizada com Segurança",
+        description: `Usuário agora é ${newRole === 'admin' ? 'administrador' : 'usuário'}. Alteração registrada no log de auditoria.`,
+      });
+      
+      await fetchAdminData();
     } catch (error) {
-      console.error('Error updating user role:', error);
+      console.error('Erro ao atualizar função:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao atualizar papel do usuário",
-        variant: "destructive"
+        title: "⚠️ Erro de Segurança",
+        description: error instanceof Error ? error.message : "Falha ao atualizar função do usuário",
+        variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
