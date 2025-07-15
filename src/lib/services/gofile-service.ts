@@ -238,13 +238,25 @@ class GofileService {
 
   async getAccountInfo(): Promise<ServiceResponse<{ storage: number; quota: number }>> {
     try {
-      console.log('[AutomationSystem] Fetching Gofile account info');
+      console.log('[GofileService] Buscando informações da conta');
       
       await this.checkRateLimit();
       this.rateLimitCount++;
 
-      const response = await fetch(`${this.baseUrl}/getAccountDetails?token=${this.accountToken}`);
+      console.log('[GofileService] Fazendo requisição para getAccountDetails');
+      const response = await fetch(`${this.baseUrl}/getAccountDetails?token=${this.accountToken}`, {
+        signal: AbortSignal.timeout(30000)
+      });
+
+      console.log(`[GofileService] Resposta da conta: ${response.status}`);
+      
+      if (!response.ok) {
+        console.error(`[GofileService] Erro HTTP: ${response.status} ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
       const result = await response.json();
+      console.log('[GofileService] Dados da conta:', result);
 
       if (result.status === 'ok') {
         const accountInfo = {
@@ -252,17 +264,19 @@ class GofileService {
           quota: result.data.totalSizeLimit || 0
         };
 
+        console.log(`[GofileService] Informações da conta obtidas: ${Math.round(accountInfo.storage / 1024 / 1024)}MB usado de ${Math.round(accountInfo.quota / 1024 / 1024)}MB`);
         return {
           success: true,
           data: accountInfo
         };
       } else {
+        console.error('[GofileService] API retornou erro:', result);
         throw new Error(result.status || 'Failed to get account info');
       }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to get account info';
-      console.error('[AutomationSystem] Gofile account info error:', errorMessage);
+      console.error('[GofileService] Erro ao obter informações da conta:', errorMessage);
       
       return {
         success: false,

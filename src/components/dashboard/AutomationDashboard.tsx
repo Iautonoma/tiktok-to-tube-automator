@@ -10,6 +10,7 @@ import { TikTokCollector } from '@/components/automation/TikTokCollector';
 import { VideoProcessor } from '@/components/automation/VideoProcessor';
 import { YouTubeUploader } from '@/components/automation/YouTubeUploader';
 import { GitHubIntegration } from '@/components/github/GitHubIntegration';
+import { ServiceDiagnostics } from '@/components/automation/ServiceDiagnostics';
 import { 
   TikTokVideo, 
   AutomationConfig, 
@@ -377,10 +378,12 @@ export function AutomationDashboard() {
           </Card>
         )}
 
-        {/* GitHub Integration Section */}
+        {/* Service Diagnostics */}
+        <ServiceDiagnostics />
+
+        {/* Main Automation Interface */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* Main Automation Interface */}
             <Tabs defaultValue="collect" className="space-y-6">
               <TabsList className="grid w-full grid-cols-3 bg-card/50">
                 <TabsTrigger value="collect" className="data-[state=active]:bg-primary/20">
